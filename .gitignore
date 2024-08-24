@@ -1,6 +1,7 @@
 config.py
 config.txt
 telegram-bot-api
+db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
