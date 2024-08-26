@@ -1,7 +1,5 @@
 # Добавление админ-панели бота
 
-## ping: api.telegram.org: Temporary failure in name resolution
-
 import config
 
 import aiosqlite
