@@ -1,5 +1,6 @@
-# Добавление админ-панели бота
+# Добавление админ-панели и рассылки
 
+from time import sleep
 import config
 
 import aiosqlite
@@ -8,7 +9,10 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from datetime import datetime
 from aiogram.types import TelegramObject
+
 from aiogram.filters import BaseFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
 
 admin_ids = [config.admin_id]
 
@@ -17,6 +21,10 @@ dp = Dispatcher()
 class IsAdmin(BaseFilter):
     async def __call__(self, obj: TelegramObject) -> bool:
         return obj.from_user.id in admin_ids
+    
+
+class AdminState(StatesGroup):
+    newsletter = State()
 
 
 admin_keyboard = [
@@ -68,6 +76,16 @@ async def get_all_users():
         await cursor.close()
     return rows
 
+
+async def get_all_users_id():
+    connect = await aiosqlite.connect('db')
+    cursor = await connect.cursor()
+    all_ids = await cursor.execute('SELECT user_id FROM users')
+    all_ids = await all_ids.fetchall()
+    await cursor.close()
+    await connect.close()
+    return all_ids
+
 async def get_user_count():
     connect = await aiosqlite.connect('db')
     cursor = await connect.cursor()
@@ -102,6 +120,46 @@ async def admin_statistic(call: types.CallbackQuery):
     await call.message.edit_text('Статистика\n\n'
                                  f'Количество пользователей: {user_count}')
 
+@dp.callback_query(F.data == 'admin_newsletter', IsAdmin())
+async def admin_newsletter(call: types.CallbackQuery, state: FSMContext):
+    await call.message.edit_text('Рассылка\n\nВведите сообщение, которое будет отправлено пользователем')
+    await state.set_state(AdminState.newsletter)
+
+@dp.message(AdminState.newsletter)
+async def admin_newsletter_step_2(message: types.Message, state: FSMContext):
+    await state.update_data(message_newsletter=message)
+    
+    all_ids = await get_all_users_id()
+    successful_ids = []
+    failed_ids = []
+
+    # Проходим по каждому пользователю и пытаемся отправить сообщение
+    for user_id in all_ids:
+        try:
+            await message.send_copy(user_id[0])
+            successful_ids.append(user_id[0])
+            await sleep(0.3)  # Задержка между отправками, чтобы избежать спам-фильтров
+        except:
+            failed_ids.append(user_id[0])
+
+    # Очистка состояния после завершения рассылки
+    await state.clear()
+
+    success_count = len(successful_ids)
+    failed_count = len(failed_ids)
+
+    
+    result_message = (f"Рассылка завершена.\n\n"
+                      f"Успешно отправлено: {success_count}\n"
+                      f"Не удалось отправить: {failed_count}\n\n"
+                      f"ID пользователей с успешной отправкой:\n{', '.join(map(str, successful_ids))}\n\n"
+                      f"ID пользователей с неудачной отправкой:\n{', '.join(map(str, failed_ids))}")
+
+    # Отправляем сообщение с результатами админу
+    await message.answer(result_message)
+
+
+
 # Обработка нажатия кнопки "Menu"
 @dp.callback_query(F.data == 'admin_menu', IsAdmin())
 async def admin_menu(call: types.CallbackQuery):
@@ -111,6 +169,7 @@ async def admin_menu(call: types.CallbackQuery):
 @dp.message()
 async def catch_all_handler(message: types.Message) -> None:
     await message.answer('Спасибо, Ваше мнение очень важно для нас')
+
 
 async def main() -> None:
     await initialize_db()  # Инициализация базы данных
