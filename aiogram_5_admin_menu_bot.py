@@ -1,4 +1,4 @@
-# Добавление админ-панели и рассылки
+# Добавление админ-панели бота
 
 from time import sleep
 import config
@@ -13,6 +13,10 @@ from aiogram.types import TelegramObject
 from aiogram.filters import BaseFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+
+from aiogram.enums.parse_mode import ParseMode
+from aiogram.client.default import DefaultBotProperties
+import html
 
 admin_ids = [config.admin_id]
 
@@ -98,7 +102,7 @@ async def get_user_count():
 @dp.message(Command('start'))
 async def start_command(message: types.Message) -> None:
     await add_user(message.from_user.id, message.from_user.full_name, message.from_user.username)
-    await message.answer(f'Добро пожаловать, {message.from_user.full_name}\nРад вас видеть, напишите мне что-нибудь хорошее')
+    await message.answer(f'<b>{html.escape(message.from_user.full_name)}</b>, добро пожаловать!\nНапишите мне что-нибудь хорошее')
 
 @dp.message(Command('admin'), IsAdmin())
 async def admin_command(message: types.Message) -> None:
@@ -118,7 +122,8 @@ async def get_users_command(message: types.Message) -> None:
 async def admin_statistic(call: types.CallbackQuery):
     user_count = await get_user_count()
     await call.message.edit_text('Статистика\n\n'
-                                 f'Количество пользователей: {user_count}')
+                                 f'Количество пользователей: {user_count}', 
+                                 reply_markup=admin_keyboard)
 
 @dp.callback_query(F.data == 'admin_newsletter', IsAdmin())
 async def admin_newsletter(call: types.CallbackQuery, state: FSMContext):
@@ -147,7 +152,6 @@ async def admin_newsletter_step_2(message: types.Message, state: FSMContext):
 
     success_count = len(successful_ids)
     failed_count = len(failed_ids)
-
     
     result_message = (f"Рассылка завершена.\n\n"
                       f"Успешно отправлено: {success_count}\n"
@@ -174,7 +178,7 @@ async def catch_all_handler(message: types.Message) -> None:
 async def main() -> None:
     await initialize_db()  # Инициализация базы данных
     token = config.TOKEN
-    bot = Bot(token)
+    bot = Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
